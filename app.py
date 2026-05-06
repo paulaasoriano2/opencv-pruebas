@@ -4,60 +4,90 @@ import numpy as np
 
 app = Flask(__name__)
 
-html_colors = {
-    "negro": (0,0,0),
-    "blanco": (255,255,255),
-    "rojo": (255,0,0),
-    "verde": (0,128,0),
-    "azul": (0,0,255),
-    "amarillo": (255,255,0),
-    "naranja": (255,165,0),
-    "rosa": (255,192,203),
-    "morado": (128,0,128),
-    "cian": (0,255,255),
-    "gris": (128,128,128),
-    "marrón": (165,42,42),
-    "lavanda": (230,230,250),
-    "beige": (245,245,220),
-    "dorado": (255,215,0),
-    "plata": (192,192,192)
+# Rangos de colores en HSV
+color_ranges = {
+    "rojo": [(0, 100, 100), (10, 255, 255)],
+    "naranja": [(10, 100, 100), (25, 255, 255)],
+    "amarillo": [(25, 100, 100), (35, 255, 255)],
+    "verde": [(35, 50, 50), (85, 255, 255)],
+    "cian": [(85, 50, 50), (100, 255, 255)],
+    "azul": [(100, 50, 50), (140, 255, 255)],
+    "morado": [(140, 50, 50), (160, 255, 255)],
+    "rosa": [(160, 50, 50), (180, 255, 255)]
 }
 
-def closest_color_name(rgb):
-    r, g, b = rgb
-    min_dist = float('inf')
-    name = "desconocido"
-    for color_name, (cr, cg, cb) in html_colors.items():
-        dist = np.sqrt((r-cr)**2 + (g-cg)**2 + (b-cb)**2)
-        if dist < min_dist:
-            min_dist = dist
-            name = color_name
-    return name
+def preprocess_image(img):
+    # Redimensionar para rendimiento
+    img = cv2.resize(img, (100, 100))
+
+    # Normalizar iluminación (LAB)
+    img_lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(img_lab)
+    l = cv2.equalizeHist(l)
+    img_lab = cv2.merge((l, a, b))
+    img = cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)
+
+    return img
 
 @app.route("/detect-color", methods=["POST"])
 def detect_color():
     file = request.files["image"]
 
+    # Leer imagen
     file_bytes = np.frombuffer(file.read(), np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+    # Convertir BGR → RGB
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    img_small = cv2.resize(img, (100,100))
+    # Preprocesado
+    img = preprocess_image(img)
 
-    pixels = img_small.reshape(-1,3)
-    unique_colors, counts = np.unique(pixels, axis=0, return_counts=True)
+    # Convertir a HSV
+    hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
-    total_pixels = pixels.shape[0]
+    total_pixels = hsv.shape[0] * hsv.shape[1]
 
     color_info = {}
-    for color, count in zip(unique_colors, counts):
-        name = closest_color_name(color)
-        color_info[name] = color_info.get(name,0) + count
 
-    for name in color_info:
-        color_info[name] = (color_info[name]/total_pixels)*100
+    for color_name, (lower, upper) in color_ranges.items():
+        lower = np.array(lower)
+        upper = np.array(upper)
 
-    sorted_colors = sorted(color_info.items(), key=lambda x:x[1], reverse=True)
+        mask = cv2.inRange(hsv, lower, upper)
+
+        count = np.sum(mask > 0)
+
+        if count > 0:
+            percentage = (count / total_pixels) * 100
+            color_info[color_name] = percentage
+
+    # Manejo de colores neutros (blanco, negro, gris)
+    h, s, v = cv2.split(hsv)
+
+    # Negro
+    black_pixels = np.sum(v < 50)
+    # Blanco
+    white_pixels = np.sum((s < 50) & (v > 200))
+    # Gris
+    gray_pixels = np.sum((s < 50) & (v >= 50) & (v <= 200))
+
+    if black_pixels > 0:
+        color_info["negro"] = (black_pixels / total_pixels) * 100
+    if white_pixels > 0:
+        color_info["blanco"] = (white_pixels / total_pixels) * 100
+    if gray_pixels > 0:
+        color_info["gris"] = (gray_pixels / total_pixels) * 100
+
+    # Ordenar resultados
+    sorted_colors = sorted(color_info.items(), key=lambda x: x[1], reverse=True)
+
+    if len(sorted_colors) == 0:
+        return jsonify({
+            "dominant_color": "desconocido",
+            "percentage": 0,
+            "all_colors": []
+        })
 
     dominant_name, dominant_percent = sorted_colors[0]
 
