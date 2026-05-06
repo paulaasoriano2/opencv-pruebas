@@ -6,14 +6,14 @@ app = Flask(__name__)
 
 # Rangos de colores en HSV
 color_ranges = {
-    "rojo": [(0, 100, 100), (10, 255, 255)],
-    "naranja": [(10, 100, 100), (25, 255, 255)],
-    "amarillo": [(25, 100, 100), (35, 255, 255)],
-    "verde": [(35, 50, 50), (85, 255, 255)],
-    "cian": [(85, 50, 50), (100, 255, 255)],
-    "azul": [(100, 50, 50), (140, 255, 255)],
-    "morado": [(140, 50, 50), (160, 255, 255)],
-    "rosa": [(160, 50, 50), (180, 255, 255)]
+    "red": [(0, 100, 100), (10, 255, 255)],
+    "orange": [(10, 100, 100), (25, 255, 255)],
+    "yellow": [(25, 100, 100), (35, 255, 255)],
+    "green": [(35, 50, 50), (85, 255, 255)],
+    "cyan": [(85, 50, 50), (100, 255, 255)],
+    "blue": [(100, 50, 50), (140, 255, 255)],
+    "purple": [(140, 50, 50), (160, 255, 255)],
+    "pink": [(160, 50, 50), (180, 255, 255)]
 }
 
 def preprocess_image(img):
@@ -73,11 +73,11 @@ def detect_color():
     gray_pixels = np.sum((s < 50) & (v >= 50) & (v <= 200))
 
     if black_pixels > 0:
-        color_info["negro"] = (black_pixels / total_pixels) * 100
+        color_info["black"] = (black_pixels / total_pixels) * 100
     if white_pixels > 0:
-        color_info["blanco"] = (white_pixels / total_pixels) * 100
+        color_info["white"] = (white_pixels / total_pixels) * 100
     if gray_pixels > 0:
-        color_info["gris"] = (gray_pixels / total_pixels) * 100
+        color_info["grey"] = (gray_pixels / total_pixels) * 100
 
     # Ordenar resultados
     sorted_colors = sorted(color_info.items(), key=lambda x: x[1], reverse=True)
