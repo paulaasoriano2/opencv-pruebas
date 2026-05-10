@@ -25,22 +25,34 @@ def preprocess_image(img):
     # Redimensionar
     img = cv2.resize(img, (100, 100))
 
-    # =========================
-    # RGB -> Escala de grises
-    # =========================
+    # Crear versión en gris SOLO para el histograma
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    # =========================
-    # Ecualización del histograma
-    # =========================
-    gray_equalized = cv2.equalizeHist(gray)
+    # Ecualizar histograma
+    equalized = cv2.equalizeHist(gray)
 
-    # =========================
-    # Gris -> RGB
-    # =========================
-    img_equalized = cv2.cvtColor(gray_equalized, cv2.COLOR_GRAY2RGB)
+    # Normalizar iluminación usando la imagen ecualizada
+    normalized = cv2.normalize(
+        equalized,
+        None,
+        0,
+        255,
+        cv2.NORM_MINMAX
+    )
 
-    return img_equalized
+    # Aplicar como máscara de iluminación
+    normalized = cv2.cvtColor(normalized, cv2.COLOR_GRAY2RGB)
+
+    # Mezclar con la original
+    result = cv2.addWeighted(
+        img,
+        0.7,
+        normalized,
+        0.3,
+        0
+    )
+
+    return result
 
 
 def classify_color(pixel):
