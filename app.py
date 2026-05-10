@@ -4,83 +4,105 @@ import numpy as np
 
 app = Flask(__name__)
 
-# Rangos de colores en HSV
-color_ranges = {
-    "red": [(0, 100, 100), (10, 255, 255)],
-    "orange": [(10, 100, 100), (25, 255, 255)],
-    "yellow": [(25, 100, 100), (35, 255, 255)],
-    "green": [(35, 50, 50), (85, 255, 255)],
-    "cyan": [(85, 50, 50), (100, 255, 255)],
-    "blue": [(100, 50, 50), (140, 255, 255)],
-    "purple": [(140, 50, 50), (160, 255, 255)],
-    "pink": [(160, 50, 50), (180, 255, 255)]
+# Colores de referencia en RGB
+reference_colors = {
+    "red": np.array([255, 0, 0]),
+    "orange": np.array([255, 165, 0]),
+    "yellow": np.array([255, 255, 0]),
+    "green": np.array([0, 255, 0]),
+    "cyan": np.array([0, 255, 255]),
+    "blue": np.array([0, 0, 255]),
+    "purple": np.array([128, 0, 128]),
+    "pink": np.array([255, 192, 203]),
+    "white": np.array([255, 255, 255]),
+    "black": np.array([0, 0, 0]),
+    "grey": np.array([128, 128, 128])
 }
 
+
 def preprocess_image(img):
-    # Redimensionar para rendimiento
+
+    # Redimensionar
     img = cv2.resize(img, (100, 100))
 
-    # Normalizar iluminación (LAB)
-    img_lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(img_lab)
-    l = cv2.equalizeHist(l)
-    img_lab = cv2.merge((l, a, b))
-    img = cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)
+    # =========================
+    # RGB -> Escala de grises
+    # =========================
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    return img
+    # =========================
+    # Ecualización del histograma
+    # =========================
+    gray_equalized = cv2.equalizeHist(gray)
+
+    # =========================
+    # Gris -> RGB
+    # =========================
+    img_equalized = cv2.cvtColor(gray_equalized, cv2.COLOR_GRAY2RGB)
+
+    return img_equalized
+
+
+def classify_color(pixel):
+
+    min_distance = float("inf")
+    detected_color = "unknown"
+
+    for color_name, ref_color in reference_colors.items():
+
+        # Distancia euclídea RGB
+        distance = np.linalg.norm(pixel - ref_color)
+
+        if distance < min_distance:
+            min_distance = distance
+            detected_color = color_name
+
+    return detected_color
+
 
 @app.route("/detect-color", methods=["POST"])
 def detect_color():
+
     file = request.files["image"]
 
     # Leer imagen
     file_bytes = np.frombuffer(file.read(), np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-    # Convertir BGR → RGB
+    # BGR -> RGB
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     # Preprocesado
     img = preprocess_image(img)
 
-    # Convertir a HSV
-    hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    total_pixels = img.shape[0] * img.shape[1]
 
-    total_pixels = hsv.shape[0] * hsv.shape[1]
+    color_count = {}
 
+    # Recorrer todos los píxeles
+    for row in img:
+        for pixel in row:
+
+            color = classify_color(pixel)
+
+            if color not in color_count:
+                color_count[color] = 0
+
+            color_count[color] += 1
+
+    # Convertir a porcentaje
     color_info = {}
 
-    for color_name, (lower, upper) in color_ranges.items():
-        lower = np.array(lower)
-        upper = np.array(upper)
-
-        mask = cv2.inRange(hsv, lower, upper)
-
-        count = np.sum(mask > 0)
-
-        if count > 0:
-            percentage = (count / total_pixels) * 100
-            color_info[color_name] = percentage
-
-    # Manejo de colores neutros (blanco, negro, gris)
-    h, s, v = cv2.split(hsv)
-
-    # Negro
-    black_pixels = np.sum(v < 50)
-    # Blanco
-    white_pixels = np.sum((s < 50) & (v > 200))
-    # Gris
-    gray_pixels = np.sum((s < 50) & (v >= 50) & (v <= 200))
-
-    if black_pixels > 0:
-        color_info["black"] = (black_pixels / total_pixels) * 100
-    if white_pixels > 0:
-        color_info["white"] = (white_pixels / total_pixels) * 100
-    if gray_pixels > 0:
-        color_info["grey"] = (gray_pixels / total_pixels) * 100
+    for color, count in color_count.items():
+        percentage = (count / total_pixels) * 100
+        color_info[color] = percentage
 
     # Ordenar resultados
-    sorted_colors = sorted(color_info.items(), key=lambda x: x[1], reverse=True)
+    sorted_colors = sorted(
+        color_info.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
 
     if len(sorted_colors) == 0:
         return jsonify({
@@ -96,6 +118,7 @@ def detect_color():
         "percentage": dominant_percent,
         "all_colors": sorted_colors
     })
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
